@@ -1,9 +1,13 @@
 {
-  "name": "discord-cue-bot",
+  "name": "discord-live-detector",
   "version": "1.0.0",
+  "description": "Discord bot to fetch YouTube live URL and notify Discord",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
+  },
+  "engines": {
+    "node": "18.x"
   },
   "dependencies": {
     "discord.js": "^14.13.0",
