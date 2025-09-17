@@ -1,7 +1,7 @@
 {
   "name": "discord-live-detector",
   "version": "1.0.0",
-  "description": "Discord bot to fetch YouTube live URL and notify Discord",
+  "type": "module",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
