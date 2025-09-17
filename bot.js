@@ -1,58 +1,57 @@
-const { Client, GatewayIntentBits } = require("discord.js");
-const fetch = import("node-fetch");
+// bot.js
+import { Client, GatewayIntentBits } from 'discord.js';
+import fetch from 'node-fetch';
 
-const client = new Client({
-  intents: [
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.Guilds
-  ]
-});
-
-// 環境変数から取得
+// 環境変数
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const YT_API_KEY = process.env.YT_API_KEY;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const GAS_URL = process.env.GAS_URL;
 
-client.on("messageCreate", async (msg) => {
-  if (msg.content === "!live") {
-    try {
-      const statuses = ["upcoming", "active"];
-      let items = [];
+// Discord Client 初期化
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
-      for (const status of statuses) {
-        const res = await fetch(
-          `https://www.googleapis.com/youtube/v3/liveBroadcasts?part=id&broadcastStatus=${status}&broadcastType=all&channelId=${CHANNEL_ID}&key=${YT_API_KEY}`
-        );
-        if (!res.ok) return msg.reply("YouTube APIに接続できませんでした。");
-
-        const data = await res.json();
-        if (data.items) items = items.concat(data.items);
-      }
-
-      if (items.length === 0) {
-        return msg.reply("予約中・配信中の限定公開ライブは見つかりませんでした。");
-      }
-
-      const videoId = items[0].id;
-      const url = `https://www.youtube.com/watch?v=${videoId}`;
-
-      // スプレッドシート更新
-      await fetch(GAS_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url })
-      });
-
-      // DiscordにURL通知
-      msg.reply(`限定公開ライブURL: ${url}`);
-
-    } catch (err) {
-      console.error(err);
-      msg.reply("CUE処理中にエラーが発生しました。");
-    }
-  }
+// Bot 起動時ログ
+client.once('ready', () => {
+    console.log(`DiscordLiveDetector is online!`);
 });
 
+// !live コマンドで限定公開ライブURLを取得
+client.on('messageCreate', async (message) => {
+    try {
+        if (message.content === '!live') {
+            // YouTube Data API でライブ検索
+            const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&eventType=live&type=video&key=${YT_API_KEY}`;
+            const res = await fetch(apiUrl);
+            if (!res.ok) throw new Error(`YouTube API error: ${res.status}`);
+            const data = await res.json();
+
+            if (!data.items || data.items.length === 0) {
+                message.reply('現在ライブは配信されていません。');
+                return;
+            }
+
+            // 最新ライブ動画を取得
+            const liveVideo = data.items[0];
+            const liveUrl = `https://www.youtube.com/watch?v=${liveVideo.id.videoId}`;
+
+            // GAS に URL 上書き
+            const gasRes = await fetch(GAS_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: liveUrl })
+            });
+
+            if (!gasRes.ok) throw new Error(`GAS update failed: ${gasRes.status}`);
+
+            // Discord に通知
+            message.reply(`限定公開ライブURL: ${liveUrl}`);
+        }
+    } catch (err) {
+        console.error(err);
+        message.reply(`CUE処理中にエラーが発生しました: ${err.message}`);
+    }
+});
+
+// Bot ログイン
 client.login(DISCORD_TOKEN);
