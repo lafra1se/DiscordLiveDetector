@@ -1,50 +1,57 @@
-// bot.js
+import { google } from 'googleapis';
 import { Client, GatewayIntentBits } from 'discord.js';
 import fetch from 'node-fetch';
 
 // 環境変数
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-const YT_API_KEY = process.env.YT_API_KEY;
-const CHANNEL_ID = process.env.CHANNEL_ID;
 const GAS_URL = process.env.GAS_URL;
+const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const REFRESH_TOKEN = process.env.GOOGLE_REFRESH_TOKEN;
+const CHANNEL_ID = process.env.CHANNEL_ID;
 
 // Discord Client 初期化
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
-// Bot 起動時ログ
+// OAuth2 クライアント
+const oauth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET);
+oauth2Client.setCredentials({ refresh_token: REFRESH_TOKEN });
+const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+
+// Bot 起動
 client.once('ready', () => {
-    console.log(`DiscordLiveDetector is online!`);
+    console.log('DiscordLiveDetector is online!');
 });
 
-// !live コマンドで限定公開ライブURLを取得
+// !live コマンド処理
 client.on('messageCreate', async (message) => {
     try {
         if (message.content === '!live') {
-            // YouTube Data API でライブ検索
-            const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&eventType=live&type=video&key=${YT_API_KEY}`;
-            const res = await fetch(apiUrl);
-            if (!res.ok) throw new Error(`YouTube API error: ${res.status}`);
-            const data = await res.json();
+            const res = await youtube.search.list({
+                part: 'snippet',
+                channelId: CHANNEL_ID,
+                eventType: 'live',
+                type: 'video',
+                maxResults: 1
+            });
 
-            if (!data.items || data.items.length === 0) {
+            if (!res.data.items || res.data.items.length === 0) {
                 message.reply('現在ライブは配信されていません。');
                 return;
             }
 
-            // 最新ライブ動画を取得
-            const liveVideo = data.items[0];
+            const liveVideo = res.data.items[0];
             const liveUrl = `https://www.youtube.com/watch?v=${liveVideo.id.videoId}`;
 
-            // GAS に URL 上書き
+            // スプレッドシート更新
             const gasRes = await fetch(GAS_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: liveUrl })
             });
-
             if (!gasRes.ok) throw new Error(`GAS update failed: ${gasRes.status}`);
 
-            // Discord に通知
+            // Discord 通知
             message.reply(`限定公開ライブURL: ${liveUrl}`);
         }
     } catch (err) {
